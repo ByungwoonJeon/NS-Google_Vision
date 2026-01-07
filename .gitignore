@@ -1,0 +1,13 @@
+# Google Cloud Auth Key
+auth/*.json
+
+# Data & Results
+01_input/
+02_output/
+*.xlsx
+*.pdf
+*.png
+
+# Python
+__pycache__/
+.venv/
