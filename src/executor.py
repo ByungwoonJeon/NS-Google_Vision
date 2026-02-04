@@ -13,11 +13,11 @@ from postprocessing import PostProcessor
 from image_handler import ImageHandler
 
 MASTER_PATHS = {
-    'general_ban': r"C:\NS-Google_Vision\01_input\공산품_금칙어.xlsx",
-    'general_ftc': r"C:\NS-Google_Vision\01_input\공산품_공정위.xlsx",
-    'general_except': r"C:\NS-Google_Vision\01_input\예외사항문구.xlsx",
-    'food_ban': r"C:\NS-Google_Vision\01_input\식품_금칙어.xlsx",
-    'food_ftc': r"C:\NS-Google_Vision\01_input\식품_공정위.xlsx"
+    'general_ban': r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\공산품_금칙어.xlsx",
+    'general_ftc': r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\공산품_공정위.xlsx",
+    'general_except': r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\예외사항문구.xlsx",
+    'food_ban': r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\식품_금칙어.xlsx",
+    'food_ftc': r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\식품_공정위.xlsx"
 }
 
 def setup_logger(base_log_dir):
@@ -112,7 +112,7 @@ def run_rpa_process(args):
         if isinstance(args, str):
             args = json.loads(args)
             
-        log_base_path = args.get('strLogPath', r"C:\NS-Google_Vision\Logs")
+        log_base_path = args.get('strLogPath', r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\Logs")
         
         logger, current_log_dir = setup_logger(log_base_path)
         if not logger:
@@ -198,10 +198,10 @@ def run_rpa_process(args):
 
 if __name__ == "__main__":
     test_args = {
-        "strOcrKey": r"C:\NS-Google_Vision\auth\vision_key.json",
-        "strInput": r"C:\NS-Google_Vision\01_input\01. Input",
-        "strIOutput": r"C:\NS-Google_Vision\02_output",
-        "strCategory": "food",
-        "strLogPath": r"C:\NS-Google_Vision\log"
+        "strOcrKey": r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\auth\vision_key.json",
+        "strInput": r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input",
+        "strIOutput": r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output",
+        "strCategory": "general",
+        "strLogPath": r"C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\log"
     }
     print(run_rpa_process(test_args))
