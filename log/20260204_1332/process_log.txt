@@ -1,0 +1,95 @@
+[2026-02-04 13:32:51] [MainThread] INFO : === RPA START ===
+[2026-02-04 13:32:51] [MainThread] INFO : [OCR] Google Vision API 클라이언트 인증 성공
+[2026-02-04 13:32:51] [MainThread] INFO : [마스터로드] 데이터(금칙어/공정위/예외어) 로드 및 정규식 컴파일 시작...
+[2026-02-04 13:32:58] [MainThread] INFO : [마스터로드] 정규식 엔진 및 라인 클러스터링 준비 완료.
+[2026-02-04 13:32:58] [OCR_Worker_0] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\03475723
+[2026-02-04 13:32:58] [OCR_Worker_1] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\04918553
+[2026-02-04 13:32:58] [OCR_Worker_2] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\10981553
+[2026-02-04 13:32:58] [OCR_Worker_0] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:32:58] [OCR_Worker_1] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:32:58] [OCR_Worker_2] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:32:58] [OCR_Worker_0] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\03475723
+[2026-02-04 13:32:58] [OCR_Worker_1] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\04918553
+[2026-02-04 13:32:58] [OCR_Worker_0] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:32:58] [OCR_Worker_2] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\10981553
+[2026-02-04 13:32:58] [OCR_Worker_1] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:32:58] [OCR_Worker_0] INFO : [OCR] >>> 요청: '03475723.jpg' 분석 시작
+[2026-02-04 13:32:58] [OCR_Worker_2] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:32:58] [OCR_Worker_1] INFO : [OCR] >>> 요청: '04918553.jpg' 분석 시작
+[2026-02-04 13:32:58] [OCR_Worker_2] INFO : [OCR] >>> 요청: '10981553.jpg' 분석 시작
+[2026-02-04 13:33:01] [OCR_Worker_1] INFO : [OCR] <<< 완료: '04918553.jpg' (3.22초 소요)
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [결과저장] 1차 저장 완료. 크기: 3.07MB
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [결과저장] 최종 저장 완료 (3.07MB): 04918553_Result_merged.png
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\16135653
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\16135653
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:33:02] [OCR_Worker_1] INFO : [OCR] >>> 요청: '16135653.jpg' 분석 시작
+[2026-02-04 13:33:03] [OCR_Worker_2] INFO : [OCR] <<< 완료: '10981553.jpg' (4.74초 소요)
+[2026-02-04 13:33:03] [OCR_Worker_2] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:04] [OCR_Worker_2] INFO : [결과저장] 1차 저장 완료. 크기: 4.69MB
+[2026-02-04 13:33:04] [OCR_Worker_2] INFO : [결과저장] 최종 저장 완료 (4.69MB): 10981553_Result_merged.png
+[2026-02-04 13:33:04] [OCR_Worker_2] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\28900022
+[2026-02-04 13:33:04] [OCR_Worker_2] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:33:04] [OCR_Worker_2] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\28900022
+[2026-02-04 13:33:04] [OCR_Worker_2] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:33:04] [OCR_Worker_2] INFO : [OCR] >>> 요청: '28900022.jpg' 분석 시작
+[2026-02-04 13:33:04] [OCR_Worker_0] INFO : [OCR] <<< 완료: '03475723.jpg' (6.25초 소요)
+[2026-02-04 13:33:05] [OCR_Worker_0] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:06] [OCR_Worker_0] INFO : [결과저장] 1차 저장 완료. 크기: 6.70MB
+[2026-02-04 13:33:06] [OCR_Worker_0] INFO : [결과저장] 최종 저장 완료 (6.70MB): 03475723_Result_merged.png
+[2026-02-04 13:33:06] [OCR_Worker_0] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\30011943
+[2026-02-04 13:33:06] [OCR_Worker_0] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:33:06] [OCR_Worker_0] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\30011943
+[2026-02-04 13:33:06] [OCR_Worker_0] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:33:06] [OCR_Worker_0] INFO : [OCR] >>> 요청: '30011943.jpg' 분석 시작
+[2026-02-04 13:33:07] [OCR_Worker_1] INFO : [OCR] <<< 완료: '16135653.jpg' (4.49초 소요)
+[2026-02-04 13:33:07] [OCR_Worker_0] INFO : [OCR] <<< 완료: '30011943.jpg' (1.01초 소요)
+[2026-02-04 13:33:07] [OCR_Worker_1] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:08] [OCR_Worker_2] INFO : [OCR] <<< 완료: '28900022.jpg' (3.65초 소요)
+[2026-02-04 13:33:08] [OCR_Worker_2] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [결과저장] 1차 저장 완료. 크기: 2.08MB
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [결과저장] 최종 저장 완료 (2.08MB): 30011943_Result_merged.png
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\32768126
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\32768126
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:33:08] [OCR_Worker_0] INFO : [OCR] >>> 요청: '32768126.jpg' 분석 시작
+[2026-02-04 13:33:09] [OCR_Worker_1] INFO : [결과저장] 1차 저장 완료. 크기: 5.67MB
+[2026-02-04 13:33:09] [OCR_Worker_1] INFO : [결과저장] 최종 저장 완료 (5.67MB): 16135653_Result_merged.png
+[2026-02-04 13:33:09] [OCR_Worker_1] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\34160435
+[2026-02-04 13:33:09] [OCR_Worker_1] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:33:09] [OCR_Worker_1] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\34160435
+[2026-02-04 13:33:09] [OCR_Worker_1] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:33:09] [OCR_Worker_1] INFO : [OCR] >>> 요청: '34160435.jpg' 분석 시작
+[2026-02-04 13:33:09] [OCR_Worker_2] INFO : [결과저장] 1차 저장 완료. 크기: 4.01MB
+[2026-02-04 13:33:09] [OCR_Worker_2] INFO : [결과저장] 최종 저장 완료 (4.01MB): 28900022_Result_merged.png
+[2026-02-04 13:33:09] [OCR_Worker_2] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\35167999
+[2026-02-04 13:33:09] [OCR_Worker_2] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:33:09] [OCR_Worker_2] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\35167999
+[2026-02-04 13:33:09] [OCR_Worker_2] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:33:09] [OCR_Worker_2] INFO : [OCR] >>> 요청: '35167999.jpg' 분석 시작
+[2026-02-04 13:33:15] [OCR_Worker_1] INFO : [OCR] <<< 완료: '34160435.jpg' (6.54초 소요)
+[2026-02-04 13:33:16] [OCR_Worker_1] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:16] [OCR_Worker_0] INFO : [OCR] <<< 완료: '32768126.jpg' (7.88초 소요)
+[2026-02-04 13:33:17] [OCR_Worker_0] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:17] [OCR_Worker_2] INFO : [OCR] <<< 완료: '35167999.jpg' (7.96초 소요)
+[2026-02-04 13:33:17] [OCR_Worker_1] INFO : [결과저장] 1차 저장 완료. 크기: 4.89MB
+[2026-02-04 13:33:17] [OCR_Worker_1] INFO : [결과저장] 최종 저장 완료 (4.89MB): 34160435_Result_merged.png
+[2026-02-04 13:33:17] [OCR_Worker_1] INFO : [전처리] 폴더 스캔 시작: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\01_input\35282819
+[2026-02-04 13:33:17] [OCR_Worker_1] INFO : [전처리] 발견된 이미지 파일: 1개
+[2026-02-04 13:33:17] [OCR_Worker_1] INFO : [전처리] 결과 저장 폴더 생성: C:\Archive\01.Work\03.SmartIDP\NS-Google_Vision\02_output\35282819
+[2026-02-04 13:33:17] [OCR_Worker_1] INFO : [전처리] 작업 객체(Item) 1개 생성 완료.
+[2026-02-04 13:33:17] [OCR_Worker_1] INFO : [OCR] >>> 요청: '35282819.jpg' 분석 시작
+[2026-02-04 13:33:18] [OCR_Worker_2] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:19] [OCR_Worker_0] INFO : [결과저장] 1차 저장 완료. 크기: 9.89MB
+[2026-02-04 13:33:19] [OCR_Worker_0] INFO : [결과저장] 최종 저장 완료 (9.89MB): 32768126_Result_merged.png
+[2026-02-04 13:33:19] [OCR_Worker_2] INFO : [결과저장] 1차 저장 완료. 크기: 7.08MB
+[2026-02-04 13:33:19] [OCR_Worker_2] INFO : [결과저장] 최종 저장 완료 (7.08MB): 35167999_Result_merged.png
+[2026-02-04 13:33:21] [OCR_Worker_1] INFO : [OCR] <<< 완료: '35282819.jpg' (3.96초 소요)
+[2026-02-04 13:33:22] [OCR_Worker_1] INFO : [이미지병합] 총 1장의 이미지를 병합합니다.
+[2026-02-04 13:33:23] [OCR_Worker_1] INFO : [결과저장] 1차 저장 완료. 크기: 8.50MB
+[2026-02-04 13:33:23] [OCR_Worker_1] INFO : [결과저장] 최종 저장 완료 (8.50MB): 35282819_Result_merged.png
+[2026-02-04 13:33:23] [MainThread] INFO : === RPA END (성공:10) ===

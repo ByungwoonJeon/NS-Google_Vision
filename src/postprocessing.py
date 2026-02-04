@@ -1,212 +1,291 @@
 import os
+import re
 import pandas as pd
+import unicodedata
 from PIL import Image, ImageDraw, ImageFont
 
 class PostProcessor:
     def __init__(self, master_paths, logger):
-        self.logger = logger
-        self.logger.info("[마스터로드] 데이터(금칙어/공정위/예외어) 로드 시작...")
+        self.main_logger = logger
+        self.main_logger.info("[마스터로드] 데이터 로드 및 한글 표준화(NFC) 시작...")
         self.master_data = self._load_master_data(master_paths)
+        # 패턴 생성 시 master_data가 비어있으면 패턴도 생성되지 않음
+        self.patterns = {
+            'general': self._prepare_patterns('general'),
+            'food': self._prepare_patterns('food')
+        }
+        self.main_logger.info("[마스터로드] 정규식 엔진 및 라인 클러스터링 준비 완료.")
+
+    def _normalize(self, text):
+        if not isinstance(text, str): text = str(text)
+        return unicodedata.normalize('NFC', text)
 
     def _load_master_data(self, paths):
         data = {"general": {}, "food": {}}
         try:
-            # 공산품(general)
-            data['general']['ban'] = self._read_file(paths['general_ban'], "공산품_금칙어")
-            data['general']['ftc'] = self._read_file(paths['general_ftc'], "공산품_공정위")
-            data['general']['except'] = self._read_file(paths['general_except'], "공산품_예외어")
-            
-            # 식품(food)
-            data['food']['ban'] = self._read_file(paths['food_ban'], "식품_금칙어")
-            data['food']['ftc'] = self._read_file(paths['food_ftc'], "식품_공정위")
-            
-            # 식품 예외어 처리가 필요하다면 여기에 추가 (현재는 공산품 예외어만 있는 것으로 간주)
+            # 경로가 정확한지 확인하며 로드
+            data['general']['ban'] = self._read_file(paths.get('general_ban'), "공산품_금칙어")
+            data['general']['ftc'] = self._read_file(paths.get('general_ftc'), "공산품_공정위")
+            data['general']['except'] = self._read_file(paths.get('general_except'), "공산품_예외어")
+            data['food']['ban'] = self._read_file(paths.get('food_ban'), "식품_금칙어")
+            data['food']['ftc'] = self._read_file(paths.get('food_ftc'), "식품_공정위")
             data['food']['except'] = set() 
-
-            self.logger.info("[마스터로드] 모든 마스터 데이터 로드 완료.")
             return data
         except Exception as e:
-            self.logger.error(f"[마스터로드] 로드 실패: {e}")
+            self.main_logger.error(f"[마스터로드] 로드 실패: {e}")
             raise e
 
     def _read_file(self, path, name):
+        """
+        [통합 수정] 
+        1. 경로 확인
+        2. 엑셀 모든 시트/모든 열 읽기
+        3. 탭, 특수공백 제거 (Clean)
+        """
         if not path or not os.path.exists(path):
-            self.logger.warning(f"[마스터로드] 파일 없음 또는 경로 미지정: {name} ({path})")
+            self.main_logger.warning(f"[마스터로드] 파일 없음: {name} (경로: {path})")
             return set()
+        
+        keywords = set()
         try:
-            if path.endswith('.csv'):
-                df = pd.read_csv(path)
+            # 1. 파일 읽기 (모든 시트)
+            if path.endswith('.xlsx') or path.endswith('.xls'):
+                try:
+                    dfs = pd.read_excel(path, sheet_name=None)
+                    df_list = dfs.values()
+                except:
+                    # openpyxl 없거나 에러 시 CSV로 시도해볼 수 있으나 보통은 여기서 해결됨
+                    self.main_logger.warning(f"[마스터로드] {name} 엑셀 읽기 실패. 포맷 확인 필요.")
+                    return set()
             else:
-                df = pd.read_excel(path)
-            # 공백 제거한 키워드 셋 생성
-            keywords = {str(x).replace(" ", "") for x in df.iloc[:, 0].dropna() if str(x).strip()}
-            self.logger.info(f"[마스터로드] {name}: {len(keywords)}개 로드 완료")
+                try: df_list = [pd.read_csv(path)]
+                except: df_list = [pd.read_csv(path, encoding='cp949')]
+
+            # 2. 데이터 정제
+            for df in df_list:
+                for val in df.values.flatten():
+                    if pd.isna(val): continue
+                    text = str(val)
+                    # 쉼표, 줄바꿈, 세미콜론 등으로 구분된 단어 분리
+                    for word in re.split(r'[,;\n]', text):
+                        # 공백/탭/특수문자 모두 제거
+                        clean_word = re.sub(r'\s+', '', self._normalize(word))
+                        # 숫자만 있는 경우(순번) 제외
+                        if clean_word and not clean_word.isdigit():
+                            keywords.add(clean_word)
+
+            self.main_logger.info(f"[마스터로드] '{name}' 로드 완료: {len(keywords)}개 키워드")
             return keywords
+
         except Exception as e:
-            self.logger.error(f"[마스터로드] {name} 읽기 에러: {e}")
+            self.main_logger.error(f"[마스터로드] {name} 읽기 에러: {e}")
             return set()
 
-    def process_one_image(self, item, start_index=1):
+    def _prepare_patterns(self, category):
+        target_sets = self.master_data.get(category, {})
+        patterns = {}
+        for key in ['except', 'ban', 'ftc']:
+            keywords = target_sets.get(key, set())
+            if not keywords: patterns[key] = None; continue
+            
+            regex_parts = []
+            for k in sorted(keywords, key=len, reverse=True):
+                # 글자 사이 공백(Space, Tab, Newline 등) 허용 패턴 생성
+                fuzzy_k = r"[\s\W]*".join(re.escape(c) for c in k)
+                if len(k) == 1:
+                    pattern = rf"(?<![가-힣]){fuzzy_k}(?![가-힣])"
+                else:
+                    pattern = fuzzy_k
+                regex_parts.append(pattern)
+            patterns[key] = re.compile("|".join(regex_parts), re.IGNORECASE)
+        return patterns
+
+    def _group_into_lines(self, ocr_texts):
+        if not ocr_texts: return []
+        sorted_texts = sorted(ocr_texts, key=lambda t: min(v.y for v in t.bounding_poly.vertices))
+        
+        lines = []
+        current_line = []
+        last_y = -1
+        y_tolerance = 15
+
+        for text in sorted_texts:
+            vertices = text.bounding_poly.vertices
+            min_y, max_y = min(v.y for v in vertices), max(v.y for v in vertices)
+            center_y = (min_y + max_y) / 2
+
+            if last_y == -1:
+                current_line.append(text)
+                last_y = center_y
+            else:
+                if abs(center_y - last_y) <= y_tolerance:
+                    current_line.append(text)
+                else:
+                    lines.append(current_line)
+                    current_line = [text]
+                    last_y = center_y
+        if current_line: lines.append(current_line)
+
+        structured_lines = []
+        for line in lines:
+            line.sort(key=lambda t: min(v.x for v in t.bounding_poly.vertices))
+            # [중요] join할 때 공백을 넣었으므로, 좌표 계산 시에도 공백을 고려해야 함
+            raw_text = " ".join([t.description for t in line])
+            full_text = self._normalize(raw_text)
+            
+            all_vertices = [v for t in line for v in t.bounding_poly.vertices]
+            min_x, min_y = min(v.x for v in all_vertices), min(v.y for v in all_vertices)
+            max_x, max_y = max(v.x for v in all_vertices), max(v.y for v in all_vertices)
+            
+            structured_lines.append({"text": full_text, "bbox": [min_x, min_y, max_x, max_y], "raw_words": line})
+        return structured_lines
+
+    def _get_match_bbox(self, raw_words, match_obj):
         """
-        executor.py에서 호출하는 메인 함수
-        이미지 1장을 처리하여 금칙어/공정위/예외어를 마킹하고 결과를 반환합니다.
+        Regex Match 객체의 위치를 기반으로 실제 단어들의 Bbox 계산
         """
-        file_name = item['file_name']
+        if not match_obj or not raw_words: return None
+        start_idx = match_obj.start()
+        end_idx = match_obj.end()
+        current_idx = 0
+        target_vertices = []
+        
+        for word in raw_words:
+            w_len = len(self._normalize(word.description))
+            w_start = current_idx
+            w_end = current_idx + w_len
+            
+            # Intersection 확인
+            if max(start_idx, w_start) < min(end_idx, w_end):
+                for v in word.bounding_poly.vertices: target_vertices.append(v)
+            
+            current_idx += (w_len + 1) # 공백 포함
+
+        if not target_vertices: return None
+        return [min(v.x for v in target_vertices), min(v.y for v in target_vertices),
+                max(v.x for v in target_vertices), max(v.y for v in target_vertices)]
+
+    def process_one_image(self, item, start_index=1, logger=None):
+        log = logger if logger else self.main_logger
         temp_path = item['temp_path']
         page_number = item['index'] + 1
-        
-        # item 딕셔너리에서 필요한 데이터 추출
         ocr_result = item.get('ocr_data', [])
-        # 카테고리는 'FOOD' 또는 'GENERAL'로 들어오므로 소문자로 변환
-        category_raw = item.get('category', 'general')
-        category = 'food' if str(category_raw).lower() == 'food' else 'general'
+        
+        category_raw = str(item.get('category', 'general')).lower()
+        category = 'food' if 'food' in category_raw else 'general'
+        review_type_raw = str(item.get('review_type', '사전심의'))
+        is_pre_review = '사전' in review_type_raw 
 
         current_issues = []
         issue_counter = start_index
 
         try:
-            # OCR 결과가 없거나 실패했을 경우 처리
             if not ocr_result:
-                # 원본 이미지를 그대로 복사해두고 빈 결과 반환
-                if os.path.exists(item['input_path']):
-                    Image.open(item['input_path']).save(temp_path)
+                if os.path.exists(item['input_path']): Image.open(item['input_path']).save(temp_path)
                 return [], temp_path
 
             with Image.open(item['input_path']) as img:
                 draw = ImageDraw.Draw(img)
-                try:
-                    font = ImageFont.truetype("malgun.ttf", 15)
-                except:
-                    font = ImageFont.load_default()
+                try: font = ImageFont.truetype("malgun.ttf", 20)
+                except: font = ImageFont.load_default()
 
-                # 카테고리(general/food) 선택
-                target_sets = self.master_data.get(category, {})
-                
-                ban_set = target_sets.get('ban', set())
-                ftc_set = target_sets.get('ftc', set())
-                except_set = target_sets.get('except', set())
+                lines = self._group_into_lines(ocr_result[1:])
+                cat_patterns = self.patterns.get(category)
 
-                # OCR 결과 순회 (첫 번째 요소는 전체 텍스트이므로 건너뜀)
-                for text in ocr_result[1:]:
-                    word_raw = text.description
-                    word_clean = word_raw.replace(" ", "")
-                    
-                    if not word_clean:
-                        continue
+                for line_info in lines:
+                    text_content = line_info['text']
+                    if not text_content.strip(): continue
 
-                    found_type = None # 'ban', 'ftc', 'except'
-                    matched_dict_word = word_clean
-
-                    # 체크 우선순위: 예외어 -> 금칙어 -> 공정위
-                    if word_clean in except_set:
-                        found_type = 'except'
-                    elif word_clean in ban_set:
-                        found_type = 'ban'
-                    elif word_clean in ftc_set:
-                        found_type = 'ftc'
-
-                    if found_type:
-                        # 좌표 계산 및 박스 그리기
-                        vertices = text.bounding_poly.vertices
-                        min_x = min(v.x for v in vertices)
-                        min_y = min(v.y for v in vertices)
-                        max_x = max(v.x for v in vertices)
-                        max_y = max(v.y for v in vertices)
-
-                        color = "red" 
-                        draw.rectangle([min_x, min_y, max_x, max_y], outline=color, width=3)
-                        
-                        index_str = str(issue_counter)
-                        tag_w = len(index_str) * 10 + 10
-                        tag_h = 20
-                        
-                        draw.rectangle([min_x, min_y - tag_h, min_x + tag_w, min_y], fill=color, outline=color)
-                        draw.text((min_x + 5, min_y - tag_h + 2), index_str, fill="white", font=font)
-
-                        # 결과 데이터 생성
+                    # [Step 1] 예외어(Except) 확인 -> 엑셀 저장 O, 마킹 X, 건너뛰기
+                    except_match = cat_patterns['except'].search(text_content) if cat_patterns['except'] else None
+                    if except_match:
                         current_issues.append({
-                            "type": found_type,        
-                            "category": category,      
+                            "type": "except", 
+                            "category": category,
                             "data": {
-                                "단어": word_raw,
-                                "실증자료여부 표시": "",
+                                "단어": except_match.group(),
+                                "실증자료여부 표시": "", 
                                 "페이지 번호": page_number,
-                                "금지어 또는 한정표현 사전 단어": matched_dict_word
+                                "금지어 또는 한정표현 사전 단어": except_match.group()
                             }
                         })
-                        
-                        self.logger.debug(f"[상세분석]   -> [{issue_counter}] 유형:{found_type} 검출: {word_raw}")
-                        issue_counter += 1
-                
-                img.save(temp_path)
-            
-            return current_issues, temp_path
+                        continue 
 
+                    # [Step 2] 금칙어/공정위 검사
+                    matched_obj = None 
+                    found_type = None
+                    box_color = ""
+
+                    ban_match = cat_patterns['ban'].search(text_content) if cat_patterns['ban'] else None
+                    if ban_match:
+                        found_type = 'ban'
+                        matched_obj = ban_match
+                        box_color = "red"
+                    else:
+                        if is_pre_review:
+                            ftc_match = cat_patterns['ftc'].search(text_content) if cat_patterns['ftc'] else None
+                            if ftc_match:
+                                found_type = 'ftc'
+                                matched_obj = ftc_match
+                                box_color = "blue"
+
+                    # [Step 3] 결과 마킹
+                    if found_type and matched_obj:
+                        precise_bbox = self._get_match_bbox(line_info['raw_words'], matched_obj)
+                        if not precise_bbox: x1, y1, x2, y2 = line_info['bbox']
+                        else: x1, y1, x2, y2 = precise_bbox
+                        
+                        draw.rectangle([x1, y1, x2, y2], outline=box_color, width=4)
+                        index_str = str(issue_counter)
+                        
+                        if hasattr(font, 'getbbox'):
+                            bbox = font.getbbox(index_str)
+                            text_w, text_h = bbox[2], bbox[3]
+                        else:
+                            text_w, text_h = font.getsize(index_str)
+                        
+                        tag_w, tag_h = text_w + 10, text_h + 10
+                        draw.rectangle([x1, y1 - tag_h, x1 + tag_w, y1], fill=box_color)
+                        draw.text((x1 + 5, y1 - tag_h + 2), index_str, fill="white", font=font)
+
+                        current_issues.append({
+                            "type": found_type, 
+                            "category": category,
+                            "data": {
+                                "단어": matched_obj.group(),
+                                "실증자료여부 표시": "",
+                                "페이지 번호": page_number,
+                                "금지어 또는 한정표현 사전 단어": matched_obj.group()
+                            }
+                        })
+                        issue_counter += 1
+
+                img.save(temp_path)
+            return current_issues, temp_path
+            
         except Exception as e:
-            self.logger.error(f"[상세분석] {file_name} 처리 중 에러: {e}")
-            try:
-                if os.path.exists(item['input_path']):
-                    Image.open(item['input_path']).save(temp_path)
-            except:
-                pass
+            log.error(f"상세분석 에러: {e}")
             return [], temp_path
 
-    def save_excel(self, all_issues, output_dir, p_code):
-        """
-        최종 결과 엑셀 저장
-        검출된 issue들의 type('ban', 'ftc', 'except')에 따라 파일을 나누어 저장합니다.
-        """
+    def save_excel(self, all_issues, output_dir, p_code, logger=None):
+        log = logger if logger else self.main_logger
         try:
-            # 데이터 분류용 딕셔너리 초기화
-            grouped_issues = {'ban': [], 'ftc': [], 'except': []}
-            detected_category = "general" 
+            grouped = {'ban': [], 'ftc': [], 'except': []}
+            cat = all_issues[0].get('category', 'general') if all_issues else 'general'
+            for issue in all_issues: grouped[issue['type']].append(issue['data'])
 
-            if all_issues:
-                # 첫 번째 이슈에서 카테고리 정보를 가져옴 (모두 동일한 상품)
-                detected_category = all_issues[0].get('category', 'general')
-                
-                for issue in all_issues:
-                    i_type = issue.get('type')
-                    i_data = issue.get('data')
-                    if i_type in grouped_issues:
-                        grouped_issues[i_type].append(i_data)
-            else:
-                # 이슈가 하나도 없을 때도 카테고리를 추정해야 한다면 기본값 사용하거나
-                # p_code 등을 통해 알 수 있지만, 여기선 'general' 기본값 사용
-                pass
-
-            # 파일명 접두사 (general -> 공산품_사전, food -> 식품_사전)
-            prefix_map = {
-                "general": "공산품_사전",
-                "food": "식품_사전"
-            }
-            file_prefix = prefix_map.get(detected_category, "공산품_사전")
-
-            # 타입별 파일명 매핑
-            type_name_map = {
-                "ban": "금칙어",
-                "ftc": "공정위",
-                "except": "예외어"
-            }
-
-            columns = ['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어']
-
-            # 3가지 타입(금칙어, 공정위, 예외어)에 대해 각각 파일 생성 시도
-            for t_key, t_name in type_name_map.items():
-                data_list = grouped_issues[t_key]
-                
-                # 데이터가 있을 때만 파일 저장
-                if data_list:
-                    full_file_name = f"{file_prefix}_{t_name} 리스트_Result_final.xlsx"
-                    save_path = os.path.join(output_dir, full_file_name)
-                    
-                    df = pd.DataFrame(data_list, columns=columns)
-                    df.to_excel(save_path, index=False)
-                    self.logger.info(f"[결과저장] {t_name} 리스트 저장 완료: {full_file_name}")
-                else:
-                    # 데이터가 없으면 파일을 생성하지 않습니다. 
-                    # (만약 빈 파일이라도 생성이 필요하면 여기에 빈 DataFrame 저장 로직 추가)
-                    pass
+            prefix = "식품" if cat == "food" else "공산품"
+            cols = ['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어']
+            
+            # [수정] 사전/사후 파일명 구분 (executor에서 넘겨받은 review_type 활용 가능하지만 여기선 심플하게)
+            # 파일이 덮어써지지 않게 주의 필요
+            
+            for t_key, t_name in {"ban":"금칙어", "ftc":"공정위", "except":"예외어"}.items():
+                save_path = os.path.join(output_dir, f"{prefix}_{t_name} 리스트_Result_final.xlsx")
+                df = pd.DataFrame(grouped[t_key], columns=cols)
+                # 데이터가 없어도 빈 파일 생성 (사용자 확인용)
+                df.to_excel(save_path, index=False)
+                log.info(f"[결과저장] {t_name} 저장 완료 ({len(df)}건)")
 
         except Exception as e:
-            self.logger.error(f"[결과저장] 엑셀 저장 실패: {e}")
+            log.error(f"엑셀 저장 실패: {e}")
