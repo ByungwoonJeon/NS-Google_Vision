@@ -2,11 +2,15 @@
 auth/*.json
 
 # Data & Results
-01_input/
 02_output/
 *.xlsx
 *.pdf
 *.png
+
+# Logs (새로 추가됨)
+log/
+logs/
+*.log
 
 # Python
 __pycache__/
