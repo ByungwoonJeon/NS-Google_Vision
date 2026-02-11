@@ -209,6 +209,13 @@ class PostProcessor:
             return [], temp_path
 
     def save_excel(self, all_issues, output_dir, p_code, logger=None):
+        """
+        검출된 이슈들을 엑셀로 저장합니다.
+        
+        [수정사항]
+        1. 검사 수행된 항목(키워드 있음) -> 결과 저장 (덮어쓰기)
+        2. 검사 미수행 항목(키워드 없음) -> 파일이 없을 때만 빈 파일 생성 (기존 파일 있으면 보존)
+        """
         log = logger if logger else self.main_logger
         try:
             grouped = {'ban': [], 'ftc': [], 'except': []}
@@ -219,11 +226,24 @@ class PostProcessor:
             cols = ['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어']
             for t_key, t_name in {"ban":"금칙어", "ftc":"공정위", "except":"예외어"}.items():
                 
-                # [수정] 파일명 뒤에 _py 추가
                 save_path = os.path.join(output_dir, f"{cat_prefix}_{t_name} 리스트_Result_final_py.xlsx")
-                
-                pd.DataFrame(grouped[t_key], columns=cols).to_excel(save_path, index=False)
-                log.info(f"[결과저장] {os.path.basename(save_path)} 저장 완료")
+
+                # Case 1: 이번에 검사를 수행함 (마스터 데이터가 로드됨)
+                if self.master_data.get(t_key):
+                    # 결과가 있든 없든 이번 검사 결과를 저장 (덮어쓰기)
+                    pd.DataFrame(grouped[t_key], columns=cols).to_excel(save_path, index=False)
+                    log.info(f"[결과저장] {os.path.basename(save_path)} 저장 완료 (검사 수행)")
+
+                # Case 2: 이번에 검사를 수행하지 않음 (마스터 데이터 없음)
+                else:
+                    # 파일이 아예 없다면 -> 빈 파일이라도 생성해줌 (사용자 요청)
+                    if not os.path.exists(save_path):
+                        pd.DataFrame([], columns=cols).to_excel(save_path, index=False)
+                        log.info(f"[결과저장] {os.path.basename(save_path)} 빈 파일 생성 (미검사 항목)")
+                    
+                    # 파일이 이미 있다면 -> 건드리지 않음 (이전 결과 보존)
+                    else:
+                        log.info(f"[결과저장] {os.path.basename(save_path)} 기존 파일 유지 (미검사 항목)")
 
         except Exception as e:
             log.error(f"엑셀 저장 실패: {e}")
