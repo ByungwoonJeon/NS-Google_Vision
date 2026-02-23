@@ -59,22 +59,23 @@ class PostProcessor:
             return set()
 
     def _prepare_patterns(self):
+        """정규식과 원본 사전 단어를 매핑하기 위해 튜플 리스트 형태로 반환합니다."""
         patterns = {}
         for key in ['except', 'ban', 'ftc']:
             keywords = self.master_data.get(key, set())
             if not keywords:
-                patterns[key] = None
+                patterns[key] = []
                 continue
             
-            regex_parts = []
+            regex_list = []
             for k in sorted(keywords, key=len, reverse=True):
                 fuzzy_k = r"[\s\W]*".join(re.escape(c) for c in k)
                 if len(k) == 1:
                     pattern = rf"(?<![가-힣]){fuzzy_k}(?![가-힣])"
                 else:
                     pattern = fuzzy_k
-                regex_parts.append(pattern)
-            patterns[key] = re.compile("|".join(regex_parts), re.IGNORECASE)
+                regex_list.append((k, re.compile(pattern, re.IGNORECASE)))
+            patterns[key] = regex_list
         return patterns
 
     def _group_into_lines(self, ocr_texts):
@@ -127,10 +128,35 @@ class PostProcessor:
         return [min(v.x for v in target_vertices), min(v.y for v in target_vertices),
                 max(v.x for v in target_vertices), max(v.y for v in target_vertices)]
 
+    def _find_all_matches(self, text):
+        """한 줄의 텍스트에서 예외어, 금칙어, 공정위 단어를 모두 겹치지 않게 찾아냅니다."""
+        all_issues = []
+        mask = [False] * len(text)
+
+        for k, pat in self.patterns.get('except', []):
+            for m in pat.finditer(text):
+                all_issues.append({'type': 'except', 'match': m, 'keyword': k})
+                for i in range(m.start(), m.end()): mask[i] = True
+
+        for k, pat in self.patterns.get('ban', []):
+            for m in pat.finditer(text):
+                if not any(mask[m.start():m.end()]):
+                    all_issues.append({'type': 'ban', 'match': m, 'keyword': k})
+                    for i in range(m.start(), m.end()): mask[i] = True
+
+        for k, pat in self.patterns.get('ftc', []):
+            for m in pat.finditer(text):
+                if not any(mask[m.start():m.end()]):
+                    all_issues.append({'type': 'ftc', 'match': m, 'keyword': k})
+                    for i in range(m.start(), m.end()): mask[i] = True
+
+        all_issues.sort(key=lambda x: x['match'].start())
+        return all_issues
+
     def process_one_image(self, item, start_index=1, logger=None):
         log = logger if logger else self.main_logger
         temp_path = item['temp_path']
-        page_number = item['index'] + 1
+        page_number = 0 # [수정] 레거시 호환을 위해 0으로 하드코딩
         ocr_result = item.get('ocr_data', [])
         category_name = item.get('category', '공산품')
 
@@ -153,34 +179,27 @@ class PostProcessor:
                     text_content = line_info['text']
                     if not text_content.strip(): continue
 
-                    if self.patterns['except']:
-                        match = self.patterns['except'].search(text_content)
-                        if match:
+                    # [수정] 한 줄에서 모든 키워드를 다 찾아냄
+                    found_matches = self._find_all_matches(text_content)
+                    
+                    for match_info in found_matches:
+                        issue_type = match_info['type']
+                        matched_obj = match_info['match']
+                        dict_word = match_info['keyword']
+                        
+                        if issue_type == 'except':
                             current_issues.append({
                                 "type": "except", "category": category_name,
-                                "data": {"단어": match.group(), "실증자료여부 표시": "", "페이지 번호": page_number, "금지어 또는 한정표현 사전 단어": match.group()}
+                                "data": {
+                                    "matched_text": matched_obj.group(), 
+                                    "page": page_number, 
+                                    "dict_word": dict_word
+                                }
                             })
-                            continue 
+                            continue
 
-                    matched_obj = None 
-                    found_type = None
-                    box_color = ""
-
-                    if self.patterns['ban']:
-                        match = self.patterns['ban'].search(text_content)
-                        if match:
-                            found_type = 'ban'
-                            matched_obj = match
-                            box_color = "red"
-                    
-                    if not found_type and self.patterns['ftc']:
-                        match = self.patterns['ftc'].search(text_content)
-                        if match:
-                            found_type = 'ftc'
-                            matched_obj = match
-                            box_color = "blue"
-
-                    if found_type and matched_obj:
+                        box_color = "red" if issue_type == 'ban' else "blue"
+                        
                         precise_bbox = self._get_match_bbox(line_info['raw_words'], matched_obj)
                         if not precise_bbox: x1, y1, x2, y2 = line_info['bbox']
                         else: x1, y1, x2, y2 = precise_bbox
@@ -196,8 +215,12 @@ class PostProcessor:
                         draw.text((x1 + 5, y1 - tag_h + 2), index_str, fill="white", font=font)
 
                         current_issues.append({
-                            "type": found_type, "category": category_name,
-                            "data": {"단어": matched_obj.group(), "실증자료여부 표시": "", "페이지 번호": page_number, "금지어 또는 한정표현 사전 단어": matched_obj.group()}
+                            "type": issue_type, "category": category_name,
+                            "data": {
+                                "matched_text": matched_obj.group(), 
+                                "page": page_number, 
+                                "dict_word": dict_word
+                            }
                         })
                         issue_counter += 1
 
@@ -208,42 +231,70 @@ class PostProcessor:
             log.error(f"상세분석 에러: {e}")
             return [], temp_path
 
-    def save_excel(self, all_issues, output_dir, p_code, logger=None):
-        """
-        검출된 이슈들을 엑셀로 저장합니다.
-        
-        [수정사항]
-        1. 검사 수행된 항목(키워드 있음) -> 결과 저장 (덮어쓰기)
-        2. 검사 미수행 항목(키워드 없음) -> 파일이 없을 때만 빈 파일 생성 (기존 파일 있으면 보존)
-        """
-        log = logger if logger else self.main_logger
-        try:
-            grouped = {'ban': [], 'ftc': [], 'except': []}
-            cat_prefix = all_issues[0].get('category', p_code) if all_issues else p_code
-            
-            for issue in all_issues: grouped[issue['type']].append(issue['data'])
+    # [수정] category와 review_type을 필수로 받아 처리하도록 수정
+    def save_excel(self, all_issues, output_dir, p_code, category="공산품", review_type="사전", logger=None):
+            log = logger if logger else self.main_logger
+            try:
+                grouped = {'ban': [], 'ftc': [], 'except': []}
+                for issue in all_issues: 
+                    grouped[issue['type']].append(issue['data'])
 
-            cols = ['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어']
-            for t_key, t_name in {"ban":"금칙어", "ftc":"공정위", "except":"예외어"}.items():
-                
-                save_path = os.path.join(output_dir, f"{cat_prefix}_{t_name} 리스트_Result_final_py.xlsx")
-
-                # Case 1: 이번에 검사를 수행함 (마스터 데이터가 로드됨)
-                if self.master_data.get(t_key):
-                    # 결과가 있든 없든 이번 검사 결과를 저장 (덮어쓰기)
-                    pd.DataFrame(grouped[t_key], columns=cols).to_excel(save_path, index=False)
-                    log.info(f"[결과저장] {os.path.basename(save_path)} 저장 완료 (검사 수행)")
-
-                # Case 2: 이번에 검사를 수행하지 않음 (마스터 데이터 없음)
-                else:
-                    # 파일이 아예 없다면 -> 빈 파일이라도 생성해줌 (사용자 요청)
-                    if not os.path.exists(save_path):
-                        pd.DataFrame([], columns=cols).to_excel(save_path, index=False)
-                        log.info(f"[결과저장] {os.path.basename(save_path)} 빈 파일 생성 (미검사 항목)")
-                    
-                    # 파일이 이미 있다면 -> 건드리지 않음 (이전 결과 보존)
+                for t_key, t_name in {"ban":"금칙어", "ftc":"공정위", "except":"예외어"}.items():
+                    # 심의 타입(사전/사후)에 따른 폴더 및 파일명 분기
+                    if review_type == "사후":
+                        target_dir = os.path.join(output_dir, t_name)
+                        os.makedirs(target_dir, exist_ok=True)
+                        file_name = f"{category}_{review_type}_{t_name}리스트_Result_final_py.xlsx"
                     else:
-                        log.info(f"[결과저장] {os.path.basename(save_path)} 기존 파일 유지 (미검사 항목)")
+                        target_dir = output_dir
+                        file_name = f"{category}_{review_type}_{t_name} 리스트_Result_final_py.xlsx"
+                    
+                    save_path = os.path.join(target_dir, file_name)
 
-        except Exception as e:
-            log.error(f"엑셀 저장 실패: {e}")
+                    if self.master_data.get(t_key):
+                        type_issues = grouped[t_key]
+                        
+                        tokens_A = []  
+                        pages_C = []   
+                        unique_D = []  
+                        seen_D = set()
+                        
+                        for data in type_issues:
+                            matched_text = data['matched_text'].strip()
+                            page_num = data['page']
+                            
+                            # 한글/영문/숫자 및 특수문자 개별 분리
+                            tokens = re.findall(r'[A-Za-z0-9가-힣]+|[^\w\s]', matched_text)
+                            
+                            for tk in tokens:
+                                tokens_A.append(tk)
+                                pages_C.append(page_num)
+                                
+                            dict_word_clean = data['dict_word'].replace(" ", "")
+                            if dict_word_clean not in seen_D:
+                                seen_D.add(dict_word_clean)
+                                unique_D.append(dict_word_clean)
+                                
+                        max_len = max(len(tokens_A), len(unique_D))
+                        
+                        if max_len == 0:
+                            df = pd.DataFrame(columns=['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어'])
+                        else:
+                            df = pd.DataFrame({
+                                '단어': tokens_A + [''] * (max_len - len(tokens_A)),
+                                '실증자료여부 표시': [''] * max_len,
+                                '페이지 번호': pages_C + [''] * (max_len - len(pages_C)),
+                                '금지어 또는 한정표현 사전 단어': unique_D + [''] * (max_len - len(unique_D))
+                            })
+                        
+                        df.to_excel(save_path, index=False)
+                        log.info(f"[결과저장] {os.path.basename(save_path)} 저장 완료 (출력 길이: {max_len}행)")
+
+                    else:
+                        # 마스터 데이터가 없을 경우 빈 파일 생성
+                        if not os.path.exists(save_path):
+                            pd.DataFrame(columns=['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어']).to_excel(save_path, index=False)
+                            log.info(f"[결과저장] {os.path.basename(save_path)} 빈 파일 생성")
+
+            except Exception as e:
+                log.error(f"엑셀 저장 실패: {e}")

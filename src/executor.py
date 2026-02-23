@@ -8,7 +8,6 @@ import re
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
-# 같은 폴더에 있는 모듈들 임포트
 from preprocessing import PreProcessor
 from docprocessing import DocProcessor
 from postprocessing import PostProcessor
@@ -56,7 +55,8 @@ def setup_product_logger(product_code, output_dir):
     logger.addHandler(stream_handler)
     return logger
 
-def process_single_product(product_folder_path, category, config, modules, main_logger):
+# [수정] 파라미터에 review_type 추가
+def process_single_product(product_folder_path, category, review_type, config, modules, main_logger):
     product_code = os.path.basename(product_folder_path)
     product_output_dir = os.path.join(config['base_output_dir'], product_code)
     os.makedirs(product_output_dir, exist_ok=True)
@@ -81,10 +81,8 @@ def process_single_product(product_folder_path, category, config, modules, main_
                 json_filename = f"{item['file_name']}_ocr.json"
                 json_save_path = os.path.join(product_output_dir, json_filename)
 
-                # OCR 수행
                 item['ocr_data'] = doc_proc.run(item['input_path'], save_json_path=json_save_path)
                 
-                # 후처리 수행
                 issues, saved_path = post_proc.process_one_image(item, start_index=next_start_index, logger=logger)
                 
                 next_start_index += len(issues)
@@ -94,11 +92,11 @@ def process_single_product(product_folder_path, category, config, modules, main_
                 logger.error(f"이미지 에러 ({item['file_name']}): {e}")
 
         if processed_img_paths:
-            # 파일명 뒤에 _py 추가
             final_img_path = os.path.join(product_output_dir, f"{product_code}_Result_merged_py.png")
             
             img_handler.merge_and_save(processed_img_paths, final_img_path)
-            post_proc.save_excel(all_issues, product_output_dir, product_code, logger=logger)
+            # [수정] 엑셀 저장 시 category와 review_type을 명시적으로 전달
+            post_proc.save_excel(all_issues, product_output_dir, product_code, category=category, review_type=review_type, logger=logger)
 
             for p in processed_img_paths:
                 if os.path.exists(p) and "temp_" in os.path.basename(p):
@@ -186,21 +184,18 @@ def run_rpa_process(args):
         if not os.path.exists(input_root):
              return json.dumps({"status": "FAIL", "error": "입력 폴더 없음"}, ensure_ascii=False)
 
-        # -------------------------------------------------------------------------
-        # [수정] 카테고리 영문 -> 한글 강제 변환
-        # 입력이 general -> 공산품, food -> 식품으로 자동 변경됩니다.
-        # -------------------------------------------------------------------------
         raw_cat = args.get('strCategory', '공산품')
-        
         if 'food' in raw_cat.lower():
             category = '식품'
         elif 'general' in raw_cat.lower():
             category = '공산품'
         else:
-            # 그 외(한글로 '건강기능식품', '화장품' 등이 들어올 경우)는 그대로 사용
             category = raw_cat
             
-        main_logger.info(f"[설정] 카테고리 확정: {category} (원본 입력: {raw_cat})")
+        # [수정] 심의 타입(사전/사후) 파라미터 추출 (기본값 '사전')
+        review_type = args.get('strReviewType', '사전')
+        
+        main_logger.info(f"[설정] 카테고리 확정: {category}, 심의타입: {review_type} (원본 입력: {raw_cat})")
 
         master_paths = get_single_master_path_from_args(args, main_logger)
         
@@ -230,7 +225,8 @@ def run_rpa_process(args):
 
         results = []
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="OCR_Worker") as executor:
-            futures = [executor.submit(process_single_product, p, category, config, modules, main_logger) for p in product_folders]
+            # [수정] process_single_product 호출 시 review_type 변수 추가 전달
+            futures = [executor.submit(process_single_product, p, category, review_type, config, modules, main_logger) for p in product_folders]
             for f in futures: results.append(f.result())
 
         success_cnt = sum(1 for r in results if r['status'] == 'SUCCESS')
@@ -248,28 +244,20 @@ def test_rpa(args):
     return json.dumps({"status": "SUCCESS", "message": "OK"}, ensure_ascii=False)
 
 if __name__ == "__main__":
-    # =========================================================
-    # [테스트 시나리오]
-    # 상황: RPA가 "식품" 카테고리의 "금칙어" 파일 하나만 딱 던져준 상황
-    # =========================================================
-    
     KEY_PATH = r"D:\NS-Google_Vision\auth\vision_key.json"
-    INPUT_DIR = r"D:\NS-Google_Vision\01_input\03475723"
+    INPUT_DIR = r"D:\NS-Google_Vision\01_input"
     OUTPUT_DIR = r"D:\NS-Google_Vision\02_output"
     LOG_DIR = r"D:\NS-Google_Vision\log"
-    
-    # ★ RPA가 보내준 단 하나의 파일 경로 (변수명은 아무거나 상관없음)
-    # 파일명에 '금칙어'가 들어있으므로 금칙어 검사만 수행해야 함
     SINGLE_MASTER_FILE = r"D:\NS-Google_Vision\01_input\공산품_사전_공정위 리스트.xlsx"
     
+    # [테스트 시나리오] strReviewType 파라미터 추가 확인
     rpa_input_str = (
         f"{{strOcrKey,{KEY_PATH}}},"
         f"{{strInput,{INPUT_DIR}}},"
         f"{{strOutput,{OUTPUT_DIR}}},"
         f"{{strLogPath,{LOG_DIR}}},"
-        f"{{strCategory,공산품}},"  # 결과 파일명 앞머리용
-        
-        # RPA가 보내는 마스터 파일 경로 (변수명은 strMasterPath 등 무엇이든 OK)
+        f"{{strCategory,공산품}},"
+        f"{{strReviewType,사전}},"  # <-- 이렇게 RPA에서 넘겨주시면 됩니다.
         f"{{strMasterPath,{SINGLE_MASTER_FILE}}}" 
     )
 
