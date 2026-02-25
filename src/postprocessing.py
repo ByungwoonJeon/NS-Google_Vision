@@ -204,15 +204,14 @@ class PostProcessor:
                         if not precise_bbox: x1, y1, x2, y2 = line_info['bbox']
                         else: x1, y1, x2, y2 = precise_bbox
                         
-                        draw.rectangle([x1, y1, x2, y2], outline=box_color, width=4)
-                        index_str = str(issue_counter)
+                        # [수정 1 & 2] 박스에 여백(padding)을 주고, 번호(인덱스) 그리는 코드는 삭제
+                        padding = 6  # 텍스트를 침범하지 않도록 여백 추가 (필요시 조절)
+                        expanded_x1 = max(0, x1 - padding)
+                        expanded_y1 = max(0, y1 - padding)
+                        expanded_x2 = min(img.width, x2 + padding)
+                        expanded_y2 = min(img.height, y2 + padding)
                         
-                        bbox = font.getbbox(index_str) if hasattr(font, 'getbbox') else (0,0, *font.getsize(index_str))
-                        text_w, text_h = bbox[2], bbox[3]
-                        tag_w, tag_h = text_w + 10, 20
-                        
-                        draw.rectangle([x1, y1 - tag_h, x1 + tag_w, y1], fill=box_color)
-                        draw.text((x1 + 5, y1 - tag_h + 2), index_str, fill="white", font=font)
+                        draw.rectangle([expanded_x1, expanded_y1, expanded_x2, expanded_y2], outline=box_color, width=4)
 
                         current_issues.append({
                             "type": issue_type, "category": category_name,
@@ -244,10 +243,12 @@ class PostProcessor:
                     if review_type == "사후":
                         target_dir = os.path.join(output_dir, t_name)
                         os.makedirs(target_dir, exist_ok=True)
-                        file_name = f"{category}_{review_type}_{t_name}리스트_Result_final_py.xlsx"
+                        # [수정 3] _py 삭제
+                        file_name = f"{category}_{review_type}_{t_name}리스트_Result_final.xlsx"
                     else:
                         target_dir = output_dir
-                        file_name = f"{category}_{review_type}_{t_name} 리스트_Result_final_py.xlsx"
+                        # [수정 3] _py 삭제
+                        file_name = f"{category}_{review_type}_{t_name} 리스트_Result_final.xlsx"
                     
                     save_path = os.path.join(target_dir, file_name)
 

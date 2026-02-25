@@ -92,10 +92,12 @@ def process_single_product(product_folder_path, category, review_type, config, m
                 logger.error(f"이미지 에러 ({item['file_name']}): {e}")
 
         if processed_img_paths:
-            final_img_path = os.path.join(product_output_dir, f"{product_code}_Result_merged_py.png")
+            # [수정 3] 이미지 파일명에서 _py 삭제
+            final_img_path = os.path.join(product_output_dir, f"Result_{product_code}.png")
             
             img_handler.merge_and_save(processed_img_paths, final_img_path)
-            # [수정] 엑셀 저장 시 category와 review_type을 명시적으로 전달
+            
+            # 엑셀 저장 (이전 수정본과 동일)
             post_proc.save_excel(all_issues, product_output_dir, product_code, category=category, review_type=review_type, logger=logger)
 
             for p in processed_img_paths:
