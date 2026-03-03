@@ -8,6 +8,8 @@ import re
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
+from PIL import Image  # [추가] PNG -> JPG 안전한 변환 및 저장을 위해 추가
+
 from preprocessing import PreProcessor
 from docprocessing import DocProcessor
 from postprocessing import PostProcessor
@@ -55,7 +57,7 @@ def setup_product_logger(product_code, output_dir):
     logger.addHandler(stream_handler)
     return logger
 
-# [수정] 파라미터에 review_type 추가
+# [Main Processor] 4단계 파이프라인 총괄 실행 로직
 def process_single_product(product_folder_path, category, review_type, config, modules, main_logger):
     product_code = os.path.basename(product_folder_path)
     product_output_dir = os.path.join(config['base_output_dir'], product_code)
@@ -68,6 +70,7 @@ def process_single_product(product_folder_path, category, review_type, config, m
         pre_proc, doc_proc, post_proc, img_handler = modules
         task = {"product_code": product_code, "category": category, "image_folder_path": product_folder_path}
 
+        # [Step 1: Pre-processing] 데이터 및 폴더 스캔
         idp_items = pre_proc.create_idp_items(task, config)
         if not idp_items:
             logger.warning("이미지 없음.")
@@ -81,8 +84,10 @@ def process_single_product(product_folder_path, category, review_type, config, m
                 json_filename = f"{item['file_name']}_ocr.json"
                 json_save_path = os.path.join(product_output_dir, json_filename)
 
+                # [Step 2: Document Processing] Google Vision API 호출
                 item['ocr_data'] = doc_proc.run(item['input_path'], save_json_path=json_save_path)
                 
+                # [Step 3: Post-processing] 텍스트 매칭 및 바운딩 박스 드로잉
                 issues, saved_path = post_proc.process_one_image(item, start_index=next_start_index, logger=logger)
                 
                 next_start_index += len(issues)
@@ -91,15 +96,42 @@ def process_single_product(product_folder_path, category, review_type, config, m
             except Exception as e:
                 logger.error(f"이미지 에러 ({item['file_name']}): {e}")
 
+        # [Step 4: Data Export] 병합 이미지 및 엑셀 리포트 추출
         if processed_img_paths:
-            # [수정 3] 이미지 파일명에서 _py 삭제
-            final_img_path = os.path.join(product_output_dir, f"Result_{product_code}.png")
+            active_t_name = config.get("active_t_name", "검사")
             
+            if review_type == "사후":
+                target_dir = os.path.join(product_output_dir, active_t_name)
+                os.makedirs(target_dir, exist_ok=True)
+                img_filename = f"{category}_{review_type}_{active_t_name}리스트_Result_Image_BOX.png"
+            else:
+                target_dir = product_output_dir
+                img_filename = f"{category}_{review_type}_{active_t_name} 리스트_Result_Image_BOX.png"
+                
+            final_img_path = os.path.join(target_dir, img_filename)
+            
+            # 지정된 경로와 이름으로 이미지 병합 및 저장
             img_handler.merge_and_save(processed_img_paths, final_img_path)
+
+            # ---------------------------------------------------------
+            # [추가된 로직] 사후 심의 & 금칙어인 경우 대표 이미지(Result_상품번호.jpg) 추출
+            # ---------------------------------------------------------
+            if review_type == "사후" and active_t_name == "금칙어":
+                root_img_filename = f"Result_{product_code}.jpg"
+                root_img_path = os.path.join(product_output_dir, root_img_filename)
+                try:
+                    # 원본이 png일 수 있으므로 확장자 불일치를 막기 위해 PIL로 변환 후 저장
+                    with Image.open(final_img_path) as img:
+                        img.convert('RGB').save(root_img_path, quality=95)
+                    logger.info(f"[Data Export] 대표 이미지 복사 완료 (루트 경로): {root_img_filename}")
+                except Exception as img_e:
+                    logger.error(f"[Data Export] 대표 이미지 복사 실패: {img_e}")
+            # ---------------------------------------------------------
             
-            # 엑셀 저장 (이전 수정본과 동일)
+            # 엑셀 저장
             post_proc.save_excel(all_issues, product_output_dir, product_code, category=category, review_type=review_type, logger=logger)
 
+            # 임시 파일 정리
             for p in processed_img_paths:
                 if os.path.exists(p) and "temp_" in os.path.basename(p):
                     try: os.remove(p)
@@ -124,6 +156,8 @@ def get_single_master_path_from_args(args, logger):
     classified = {'ban': '', 'ftc': '', 'except': ''}
     found_path = None
     
+    FIXED_EXCEPTION_PATH = r"D:\NS-Google_Vision\예외사항문구.xlsx" 
+    
     for key, val in args.items():
         if isinstance(val, str) and len(val) > 4:
             clean_val = val.strip().replace('\\', '/')
@@ -138,17 +172,20 @@ def get_single_master_path_from_args(args, logger):
     filename = os.path.basename(found_path)
     logger.info(f"[설정] 감지된 마스터 파일: {filename}")
 
+    if os.path.exists(FIXED_EXCEPTION_PATH):
+        classified['except'] = FIXED_EXCEPTION_PATH
+
     if "금칙어" in filename:
         classified['ban'] = found_path
-        logger.info(f"   -> [금칙어] 검사 모드로 설정됨")
+        logger.info(f"   -> [금칙어] 검사 모드 (예외어 강제 포함)")
     elif "공정위" in filename:
         classified['ftc'] = found_path
-        logger.info(f"   -> [공정위] 검사 모드로 설정됨")
-    elif "예외어" in filename:
+        logger.info(f"   -> [공정위] 검사 모드 (예외어 강제 포함)")
+    elif "예외" in filename:
         classified['except'] = found_path
-        logger.info(f"   -> [예외어] 검사 모드로 설정됨")
+        logger.info(f"   -> [예외어] 단독 검사 모드")
     else:
-        logger.warning(f"   -> 파일명에서 검사 유형(금칙어/공정위/예외어)을 식별할 수 없습니다.")
+        logger.warning(f"   -> 파일명에서 검사 유형을 식별할 수 없습니다.")
 
     return classified
 
@@ -194,12 +231,16 @@ def run_rpa_process(args):
         else:
             category = raw_cat
             
-        # [수정] 심의 타입(사전/사후) 파라미터 추출 (기본값 '사전')
         review_type = args.get('strReviewType', '사전')
         
         main_logger.info(f"[설정] 카테고리 확정: {category}, 심의타입: {review_type} (원본 입력: {raw_cat})")
 
         master_paths = get_single_master_path_from_args(args, main_logger)
+        
+        active_t_name = "검사"
+        if master_paths.get('ban'): active_t_name = "금칙어"
+        elif master_paths.get('ftc'): active_t_name = "공정위"
+        elif master_paths.get('except'): active_t_name = "예외어"
         
         pre_proc = PreProcessor(main_logger)
         doc_proc = DocProcessor(api_key_path, main_logger)
@@ -207,7 +248,7 @@ def run_rpa_process(args):
         img_handler = ImageHandler(main_logger)
         
         modules = (pre_proc, doc_proc, post_proc, img_handler)
-        config = {"base_output_dir": output_root, "google_key_file": api_key_path}
+        config = {"base_output_dir": output_root, "google_key_file": api_key_path, "active_t_name": active_t_name}
 
         product_folders = []
         sub_dirs = [os.path.join(input_root, d) for d in os.listdir(input_root) if os.path.isdir(os.path.join(input_root, d))]
@@ -227,7 +268,6 @@ def run_rpa_process(args):
 
         results = []
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="OCR_Worker") as executor:
-            # [수정] process_single_product 호출 시 review_type 변수 추가 전달
             futures = [executor.submit(process_single_product, p, category, review_type, config, modules, main_logger) for p in product_folders]
             for f in futures: results.append(f.result())
 
@@ -252,14 +292,13 @@ if __name__ == "__main__":
     LOG_DIR = r"D:\NS-Google_Vision\log"
     SINGLE_MASTER_FILE = r"D:\NS-Google_Vision\01_input\공산품_사전_공정위 리스트.xlsx"
     
-    # [테스트 시나리오] strReviewType 파라미터 추가 확인
     rpa_input_str = (
         f"{{strOcrKey,{KEY_PATH}}},"
         f"{{strInput,{INPUT_DIR}}},"
         f"{{strOutput,{OUTPUT_DIR}}},"
         f"{{strLogPath,{LOG_DIR}}},"
         f"{{strCategory,공산품}},"
-        f"{{strReviewType,사전}},"  # <-- 이렇게 RPA에서 넘겨주시면 됩니다.
+        f"{{strReviewType,사전}}," 
         f"{{strMasterPath,{SINGLE_MASTER_FILE}}}" 
     )
 

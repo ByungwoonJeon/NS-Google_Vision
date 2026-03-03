@@ -23,7 +23,11 @@ class PostProcessor:
         data['except'] = self._read_file(paths.get('except'), "예외어")
         return data
 
-    def _read_file(self, path, name):
+    def _read_file(self, path: str, name: str) -> set:
+        """
+        [Step 3: Post-processing] 마스터 엑셀/CSV 파일에서 키워드를 추출하여 Set으로 반환합니다.
+        - 최적화: 엑셀 로드 시 첫 번째 시트(Sheet1)만 읽어 메모리 효율성을 극대화합니다.
+        """
         if not path or not os.path.exists(path):
             if path: 
                 self.main_logger.warning(f"[마스터로드] 파일 없음: {name} (경로: {path})")
@@ -31,35 +35,50 @@ class PostProcessor:
         
         keywords = set()
         try:
-            if path.endswith('.xlsx') or path.endswith('.xls'):
+            # 엑셀 파일 처리 분기
+            if path.lower().endswith(('.xlsx', '.xls')):
                 try:
-                    dfs = pd.read_excel(path, sheet_name=None)
-                    df_list = dfs.values()
-                except:
+                    # [핵심 수정] sheet_name=0 으로 지정하여 무조건 첫 번째 시트만 DataFrame으로 로드
+                    # header=None을 유지하여 첫 번째 행의 데이터 유실을 방지합니다.
+                    df = pd.read_excel(path, sheet_name=0, header=None)
+                    df_list = [df]  # 하위 로직(반복문)과의 호환성을 위해 리스트로 래핑
+                except Exception as ex:
+                    self.main_logger.error(f"[마스터로드] {name} 엑셀 시트 파싱 에러 ({path}): {ex}")
                     return set()
+            # CSV 파일 처리 분기
             else:
-                try: df_list = [pd.read_csv(path)]
-                except: df_list = [pd.read_csv(path, encoding='cp949')]
+                try: 
+                    df_list = [pd.read_csv(path, header=None)]
+                except Exception: 
+                    # utf-8 실패 시 cp949(EUC-KR) 폴백 처리
+                    df_list = [pd.read_csv(path, encoding='cp949', header=None)]
 
+            # 데이터 정제 및 키워드 추출 파이프라인
             for df in df_list:
                 for val in df.values.flatten():
                     if pd.isna(val): continue
+                    
                     text = str(val)
+                    # 쉼표, 세미콜론, 줄바꿈 단위로 토큰 분리
                     for word in re.split(r'[,;\n]', text):
+                        # 공백 제거 및 유니코드 정규화(NFC) 수행
                         clean_word = re.sub(r'\s+', '', self._normalize(word))
+                        
+                        # 유효성 검사: 빈 문자열, 단순 숫자, 1글자 한글 제외
                         if not clean_word or clean_word.isdigit(): continue
                         if len(clean_word) == 1 and '가' <= clean_word <= '힣': continue
+                        
                         keywords.add(clean_word)
 
-            self.main_logger.info(f"[마스터로드] '{name}' 로드 완료: {len(keywords)}개 키워드")
+            self.main_logger.info(f"[마스터로드] '{name}' 로드 완료 (Sheet1 전용): {len(keywords)}개 키워드 추출됨")
             return keywords
 
         except Exception as e:
-            self.main_logger.error(f"[마스터로드] {name} 읽기 에러: {e}")
+            self.main_logger.error(f"[마스터로드] {name} 전체 읽기 프로세스 치명적 에러: {e}")
             return set()
 
+    # postprocessing.py 내 _prepare_patterns 수정 제안
     def _prepare_patterns(self):
-        """정규식과 원본 사전 단어를 매핑하기 위해 튜플 리스트 형태로 반환합니다."""
         patterns = {}
         for key in ['except', 'ban', 'ftc']:
             keywords = self.master_data.get(key, set())
@@ -69,11 +88,13 @@ class PostProcessor:
             
             regex_list = []
             for k in sorted(keywords, key=len, reverse=True):
-                fuzzy_k = r"[\s\W]*".join(re.escape(c) for c in k)
-                if len(k) == 1:
-                    pattern = rf"(?<![가-힣]){fuzzy_k}(?![가-힣])"
-                else:
-                    pattern = fuzzy_k
+                clean_k = re.sub(r'\s+', '', k) 
+                fuzzy_k = r"[\s\W]*".join(re.escape(c) for c in clean_k)
+                
+                # [수정] 모든 키워드에 대해 한국어 단어 경계 조건 추가
+                # 앞뒤에 한글이 더 붙어있지 않은 경우에만 매칭 (조사/공백/특수문자는 허용)
+                pattern = rf"(?<![가-힣]){fuzzy_k}(?![가-힣])"
+                
                 regex_list.append((k, re.compile(pattern, re.IGNORECASE)))
             patterns[key] = regex_list
         return patterns
@@ -187,22 +208,37 @@ class PostProcessor:
                         matched_obj = match_info['match']
                         dict_word = match_info['keyword']
                         
-                        if issue_type == 'except':
-                            current_issues.append({
-                                "type": "except", "category": category_name,
-                                "data": {
-                                    "matched_text": matched_obj.group(), 
-                                    "page": page_number, 
-                                    "dict_word": dict_word
-                                }
-                            })
-                            continue
-
-                        box_color = "red" if issue_type == 'ban' else "blue"
+                        # 예외어도 박스를 그리도록 continue 삭제하고 색상 분기 처리
+                        if issue_type == 'ban':
+                            box_color = "red"
+                        elif issue_type == 'ftc':
+                            box_color = "blue"
+                        elif issue_type == 'except':
+                            box_color = "green" # 예외어는 초록색 박스
+                        else:
+                            box_color = "black"
                         
                         precise_bbox = self._get_match_bbox(line_info['raw_words'], matched_obj)
                         if not precise_bbox: x1, y1, x2, y2 = line_info['bbox']
                         else: x1, y1, x2, y2 = precise_bbox
+                        
+                        padding = 6
+                        expanded_x1 = max(0, x1 - padding)
+                        expanded_y1 = max(0, y1 - padding)
+                        expanded_x2 = min(img.width, x2 + padding)
+                        expanded_y2 = min(img.height, y2 + padding)
+                        
+                        draw.rectangle([expanded_x1, expanded_y1, expanded_x2, expanded_y2], outline=box_color, width=4)
+
+                        current_issues.append({
+                            "type": issue_type, "category": category_name,
+                            "data": {
+                                "matched_text": matched_obj.group(), 
+                                "page": page_number, 
+                                "dict_word": dict_word
+                            }
+                        })
+                        issue_counter += 1
                         
                         # [수정 1 & 2] 박스에 여백(padding)을 주고, 번호(인덱스) 그리는 코드는 삭제
                         padding = 6  # 텍스트를 침범하지 않도록 여백 추가 (필요시 조절)
@@ -258,7 +294,7 @@ class PostProcessor:
                         tokens_A = []  
                         pages_C = []   
                         unique_D = []  
-                        seen_D = set()
+                        # seen_D = set() 삭제 (또는 주석 처리)
                         
                         for data in type_issues:
                             matched_text = data['matched_text'].strip()
@@ -272,29 +308,33 @@ class PostProcessor:
                                 pages_C.append(page_num)
                                 
                             dict_word_clean = data['dict_word'].replace(" ", "")
-                            if dict_word_clean not in seen_D:
-                                seen_D.add(dict_word_clean)
-                                unique_D.append(dict_word_clean)
+                            
+                            # 조건문 없이 발견된 모든 사전 단어를 무조건 추가!
+                            unique_D.append(dict_word_clean)
                                 
                         max_len = max(len(tokens_A), len(unique_D))
                         
+                        # [수정 후]
                         if max_len == 0:
-                            df = pd.DataFrame(columns=['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어'])
+                            # C열 자리에 빈 공백 문자열(' ')을 헤더로 하는 열 추가
+                            df = pd.DataFrame(columns=['단어', '실증자료여부 표시', ' ', '페이지 번호', '금지어 또는 한정표현 사전 단어'])
                         else:
                             df = pd.DataFrame({
                                 '단어': tokens_A + [''] * (max_len - len(tokens_A)),
                                 '실증자료여부 표시': [''] * max_len,
+                                ' ': [''] * max_len,  # C열: 헤더 공백 및 데이터 빈칸 처리
                                 '페이지 번호': pages_C + [''] * (max_len - len(pages_C)),
                                 '금지어 또는 한정표현 사전 단어': unique_D + [''] * (max_len - len(unique_D))
                             })
-                        
+                            
                         df.to_excel(save_path, index=False)
                         log.info(f"[결과저장] {os.path.basename(save_path)} 저장 완료 (출력 길이: {max_len}행)")
 
                     else:
                         # 마스터 데이터가 없을 경우 빈 파일 생성
                         if not os.path.exists(save_path):
-                            pd.DataFrame(columns=['단어', '실증자료여부 표시', '페이지 번호', '금지어 또는 한정표현 사전 단어']).to_excel(save_path, index=False)
+                            # 여기도 C열 빈칸 헤더 추가
+                            pd.DataFrame(columns=['단어', '실증자료여부 표시', ' ', '페이지 번호', '금지어 또는 한정표현 사전 단어']).to_excel(save_path, index=False)
                             log.info(f"[결과저장] {os.path.basename(save_path)} 빈 파일 생성")
 
             except Exception as e:
