@@ -150,21 +150,24 @@ class PostProcessor:
                 max(v.x for v in target_vertices), max(v.y for v in target_vertices)]
 
     def _find_all_matches(self, text):
-        """한 줄의 텍스트에서 예외어, 금칙어, 공정위 단어를 모두 겹치지 않게 찾아냅니다."""
+        """한 줄의 텍스트에서 예외어, 금칙어, 공정위 단어를 찾아냅니다. (예외어는 리포팅에서 제외)"""
         all_issues = []
         mask = [False] * len(text)
 
+        # 1. 예외어 처리: 마스킹(Masking)만 수행하고 이슈 목록에는 넣지 않습니다.
         for k, pat in self.patterns.get('except', []):
             for m in pat.finditer(text):
-                all_issues.append({'type': 'except', 'match': m, 'keyword': k})
+                # 기존에 있던 all_issues.append(...) 코드를 삭제합니다.
                 for i in range(m.start(), m.end()): mask[i] = True
 
+        # 2. 금칙어 처리
         for k, pat in self.patterns.get('ban', []):
             for m in pat.finditer(text):
                 if not any(mask[m.start():m.end()]):
                     all_issues.append({'type': 'ban', 'match': m, 'keyword': k})
                     for i in range(m.start(), m.end()): mask[i] = True
 
+        # 3. 공정위 처리
         for k, pat in self.patterns.get('ftc', []):
             for m in pat.finditer(text):
                 if not any(mask[m.start():m.end()]):
@@ -208,15 +211,13 @@ class PostProcessor:
                         matched_obj = match_info['match']
                         dict_word = match_info['keyword']
                         
-                        # 예외어도 박스를 그리도록 continue 삭제하고 색상 분기 처리
+                    # 수정 전 로직 제거 및 간소화
                         if issue_type == 'ban':
                             box_color = "red"
                         elif issue_type == 'ftc':
                             box_color = "blue"
-                        elif issue_type == 'except':
-                            box_color = "green" # 예외어는 초록색 박스
                         else:
-                            box_color = "black"
+                            box_color = "black" # except 처리 부분(초록색) 삭제
                         
                         precise_bbox = self._get_match_bbox(line_info['raw_words'], matched_obj)
                         if not precise_bbox: x1, y1, x2, y2 = line_info['bbox']
